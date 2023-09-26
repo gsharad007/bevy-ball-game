@@ -1,17 +1,21 @@
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
+use rand::random;
 
 /// The main function that runs the Bevy app.
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
-        .add_systems(Startup, (spawn_camera, spawn_player))
+        .add_systems(Startup, (spawn_camera, spawn_player, spawn_enemies))
         .add_systems(Update, (player_movement, confine_player_movement))
         .run();
 }
 
 #[derive(Component)]
 pub struct Player {}
+
+#[derive(Component)]
+pub struct Enemy {}
 
 /// Spawns a player entity with a blue ball sprite in the center of the primary window.
 fn spawn_player(
@@ -29,6 +33,30 @@ fn spawn_player(
         },
         Player {},
     ));
+}
+
+fn spawn_enemies(
+    mut commands: Commands,
+    window_query: Query<&Window, With<PrimaryWindow>>,
+    asset_server: Res<AssetServer>,
+) {
+    let window = window_query.get_single().unwrap();
+
+    const NUMBER_OF_ENEMIES: usize = 4;
+
+    for _ in 0..NUMBER_OF_ENEMIES {
+        let random_x = random::<f32>() * window.width();
+        let random_y = random::<f32>() * window.height();
+
+        commands.spawn((
+            SpriteBundle {
+                transform: Transform::from_xyz(random_x, random_y, 0.0),
+                texture: asset_server.load("sprites/ball_red_large.png"),
+                ..default()
+            },
+            Enemy {},
+        ));
+    }
 }
 
 /// Spawns a 2D camera in the center of the primary window.
