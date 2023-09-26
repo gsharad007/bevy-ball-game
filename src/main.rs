@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
+/// The main function that runs the Bevy app.
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
@@ -12,6 +13,7 @@ fn main() {
 #[derive(Component)]
 pub struct Player {}
 
+/// Spawns a player entity with a blue ball sprite in the center of the primary window.
 fn spawn_player(
     mut commands: Commands,
     window_query: Query<&Window, With<PrimaryWindow>>,
@@ -21,7 +23,7 @@ fn spawn_player(
 
     commands.spawn((
         SpriteBundle {
-            transform: Transform::from_xyz(window.width() / 2., window.height() / 2., 0.0),
+            transform: Transform::from_xyz(window.width() / 2.0, window.height() / 2.0, 0.0),
             texture: asset_server.load("sprites/ball_blue_large.png"),
             ..default()
         },
@@ -29,11 +31,12 @@ fn spawn_player(
     ));
 }
 
+/// Spawns a 2D camera in the center of the primary window.
 fn spawn_camera(mut commands: Commands, window_query: Query<&Window, With<PrimaryWindow>>) {
     let window = window_query.get_single().unwrap();
 
     commands.spawn(Camera2dBundle {
-        transform: Transform::from_xyz(window.width() / 2., window.height() / 2., 0.0),
+        transform: Transform::from_xyz(window.width() / 2.0, window.height() / 2.0, 0.0),
         ..default()
     });
 }
