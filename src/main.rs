@@ -6,7 +6,7 @@ fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .add_systems(Startup, (spawn_camera, spawn_player))
-        .add_systems(Update, player_movement)
+        .add_systems(Update, (player_movement, confine_player_movement))
         .run();
 }
 
@@ -65,7 +65,27 @@ fn player_movement(
         direction = direction.normalize_or_zero();
 
         let delta_time = time.delta_seconds();
-        const SPEED: f32 = 500.0;
-        player_transform.translation += direction * SPEED * delta_time;
+        const PLAYER_SPEED: f32 = 500.0;
+        player_transform.translation += direction * PLAYER_SPEED * delta_time;
+    }
+}
+
+fn confine_player_movement(
+    mut player_query: Query<&mut Transform, With<Player>>,
+    window_query: Query<&Window, With<PrimaryWindow>>,
+) {
+    let window = window_query.get_single().unwrap();
+
+    if let Ok(mut player_transform) = player_query.get_single_mut() {
+        const PLAYER_SIZE: f32 = 64.0;
+        const HALF_PLAYER_SIZE: f32 = PLAYER_SIZE / 2.0;
+
+        let x_min = 0.0_f32 + HALF_PLAYER_SIZE;
+        let y_min = 0.0_f32 + HALF_PLAYER_SIZE;
+        let x_max = window.width() - HALF_PLAYER_SIZE;
+        let y_max = window.height() - HALF_PLAYER_SIZE;
+
+        player_transform.translation.x = player_transform.translation.x.clamp(x_min, x_max);
+        player_transform.translation.y = player_transform.translation.y.clamp(y_min, y_max);
     }
 }
