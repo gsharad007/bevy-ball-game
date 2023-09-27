@@ -7,15 +7,20 @@ fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .add_systems(Startup, (spawn_camera, spawn_player, spawn_enemies))
-        .add_systems(Update, (player_movement, confine_player_movement))
+        .add_systems(
+            Update,
+            (player_movement, confine_player_movement, enemy_movement),
+        )
         .run();
 }
 
 #[derive(Component)]
-pub struct Player {}
+struct Player {}
 
 #[derive(Component)]
-pub struct Enemy {}
+struct Enemy {
+    pub direction: Vec2,
+}
 
 /// Spawns a player entity with a blue ball sprite in the center of the primary window.
 fn spawn_player(
@@ -47,6 +52,8 @@ fn spawn_enemies(
     for _ in 0..NUMBER_OF_ENEMIES {
         let random_x = random::<f32>() * window.width();
         let random_y = random::<f32>() * window.height();
+        let enemy_direction =
+            Vec2::new(random::<f32>() * 2.0 - 1.0, random::<f32>() * 2.0 - 1.0).normalize();
 
         commands.spawn((
             SpriteBundle {
@@ -54,7 +61,9 @@ fn spawn_enemies(
                 texture: asset_server.load("sprites/ball_red_large.png"),
                 ..default()
             },
-            Enemy {},
+            Enemy {
+                direction: enemy_direction,
+            },
         ));
     }
 }
@@ -115,5 +124,14 @@ fn confine_player_movement(
 
         player_transform.translation.x = player_transform.translation.x.clamp(x_min, x_max);
         player_transform.translation.y = player_transform.translation.y.clamp(y_min, y_max);
+    }
+}
+
+fn enemy_movement(mut enemy_query: Query<(&mut Transform, &Enemy)>, time: Res<Time>) {
+    for (mut enemy_transform, enemy) in enemy_query.iter_mut() {
+        let delta_time = time.delta_seconds();
+        let direction = Vec3::new(enemy.direction.x, enemy.direction.y, 0.0);
+        const ENEMY_SPEED: f32 = 200.0;
+        enemy_transform.translation += direction * ENEMY_SPEED * delta_time;
     }
 }
