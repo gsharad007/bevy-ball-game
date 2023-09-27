@@ -7,10 +7,8 @@ fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .add_systems(Startup, (spawn_camera, spawn_player, spawn_enemies))
-        .add_systems(
-            Update,
-            (player_movement, confine_player_movement, enemy_movement),
-        )
+        .add_systems(Update, (player_movement, confine_player_movement))
+        .add_systems(Update, (enemy_movement, bounce_enemies_off_edges))
         .run();
 }
 
@@ -133,5 +131,29 @@ fn enemy_movement(mut enemy_query: Query<(&mut Transform, &Enemy)>, time: Res<Ti
         let direction = Vec3::new(enemy.direction.x, enemy.direction.y, 0.0);
         const ENEMY_SPEED: f32 = 200.0;
         enemy_transform.translation += direction * ENEMY_SPEED * delta_time;
+    }
+}
+
+fn bounce_enemies_off_edges(
+    mut enemy_query: Query<(&Transform, &mut Enemy)>,
+    window_query: Query<&Window, With<PrimaryWindow>>,
+) {
+    let window = window_query.get_single().unwrap();
+
+    for (enemy_transform, mut enemy) in enemy_query.iter_mut() {
+        const ENEMY_SIZE: f32 = 64.0;
+        const HALF_ENEMY_SIZE: f32 = ENEMY_SIZE / 2.0;
+
+        let x_min = 0.0_f32 + HALF_ENEMY_SIZE;
+        let y_min = 0.0_f32 + HALF_ENEMY_SIZE;
+        let x_max = window.width() - HALF_ENEMY_SIZE;
+        let y_max = window.height() - HALF_ENEMY_SIZE;
+
+        if enemy_transform.translation.x <= x_min || enemy_transform.translation.x >= x_max {
+            enemy.direction.x = -enemy.direction.x;
+        }
+        if enemy_transform.translation.y <= y_min || enemy_transform.translation.y >= y_max {
+            enemy.direction.y = -enemy.direction.y;
+        }
     }
 }
