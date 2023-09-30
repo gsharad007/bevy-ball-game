@@ -8,7 +8,14 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_systems(Startup, (spawn_camera, spawn_player, spawn_enemies))
         .add_systems(Update, (player_movement, confine_player_movement))
-        .add_systems(Update, (enemy_movement, bounce_enemies_off_edges))
+        .add_systems(
+            Update,
+            (
+                enemy_movement,
+                bounce_enemies_off_edges,
+                confine_enemy_movement,
+            ),
+        )
         .run();
 }
 
@@ -111,15 +118,15 @@ fn confine_player_movement(
 ) {
     let window = window_query.get_single().unwrap();
 
+    const PLAYER_SIZE: f32 = 64.0;
+    const HALF_PLAYER_SIZE: f32 = PLAYER_SIZE / 2.0;
+
+    let x_min = 0.0_f32 + HALF_PLAYER_SIZE;
+    let y_min = 0.0_f32 + HALF_PLAYER_SIZE;
+    let x_max = window.width() - HALF_PLAYER_SIZE;
+    let y_max = window.height() - HALF_PLAYER_SIZE;
+
     if let Ok(mut player_transform) = player_query.get_single_mut() {
-        const PLAYER_SIZE: f32 = 64.0;
-        const HALF_PLAYER_SIZE: f32 = PLAYER_SIZE / 2.0;
-
-        let x_min = 0.0_f32 + HALF_PLAYER_SIZE;
-        let y_min = 0.0_f32 + HALF_PLAYER_SIZE;
-        let x_max = window.width() - HALF_PLAYER_SIZE;
-        let y_max = window.height() - HALF_PLAYER_SIZE;
-
         player_transform.translation.x = player_transform.translation.x.clamp(x_min, x_max);
         player_transform.translation.y = player_transform.translation.y.clamp(y_min, y_max);
     }
@@ -155,5 +162,25 @@ fn bounce_enemies_off_edges(
         if enemy_transform.translation.y <= y_min || enemy_transform.translation.y >= y_max {
             enemy.direction.y = -enemy.direction.y;
         }
+    }
+}
+
+fn confine_enemy_movement(
+    mut enemy_query: Query<&mut Transform, With<Enemy>>,
+    window_query: Query<&Window, With<PrimaryWindow>>,
+) {
+    let window = window_query.get_single().unwrap();
+
+    const ENEMY_SIZE: f32 = 64.0;
+    const HALF_ENEMY_SIZE: f32 = ENEMY_SIZE / 2.0;
+
+    let x_min = 0.0_f32 + HALF_ENEMY_SIZE;
+    let y_min = 0.0_f32 + HALF_ENEMY_SIZE;
+    let x_max = window.width() - HALF_ENEMY_SIZE;
+    let y_max = window.height() - HALF_ENEMY_SIZE;
+
+    for mut enemy_transform in enemy_query.iter_mut() {
+        enemy_transform.translation.x = enemy_transform.translation.x.clamp(x_min, x_max);
+        enemy_transform.translation.y = enemy_transform.translation.y.clamp(y_min, y_max);
     }
 }
