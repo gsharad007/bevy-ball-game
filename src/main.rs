@@ -142,25 +142,42 @@ fn enemy_movement(mut enemy_query: Query<(&mut Transform, &Enemy)>, time: Res<Ti
 }
 
 fn bounce_enemies_off_edges(
+    mut commands: Commands,
     mut enemy_query: Query<(&Transform, &mut Enemy)>,
     window_query: Query<&Window, With<PrimaryWindow>>,
+    asset_server: Res<AssetServer>,
 ) {
     let window = window_query.get_single().unwrap();
 
-    for (enemy_transform, mut enemy) in enemy_query.iter_mut() {
-        const ENEMY_SIZE: f32 = 64.0;
-        const HALF_ENEMY_SIZE: f32 = ENEMY_SIZE / 2.0;
+    const ENEMY_SIZE: f32 = 64.0;
+    const HALF_ENEMY_SIZE: f32 = ENEMY_SIZE / 2.0;
 
-        let x_min = 0.0_f32 + HALF_ENEMY_SIZE;
-        let y_min = 0.0_f32 + HALF_ENEMY_SIZE;
-        let x_max = window.width() - HALF_ENEMY_SIZE;
-        let y_max = window.height() - HALF_ENEMY_SIZE;
+    let x_min = 0.0_f32 + HALF_ENEMY_SIZE;
+    let y_min = 0.0_f32 + HALF_ENEMY_SIZE;
+    let x_max = window.width() - HALF_ENEMY_SIZE;
+    let y_max = window.height() - HALF_ENEMY_SIZE;
+
+    for (enemy_transform, mut enemy) in enemy_query.iter_mut() {
+        let mut direction_changed = false;
 
         if enemy_transform.translation.x <= x_min || enemy_transform.translation.x >= x_max {
             enemy.direction.x = -enemy.direction.x;
+            direction_changed = true;
         }
         if enemy_transform.translation.y <= y_min || enemy_transform.translation.y >= y_max {
             enemy.direction.y = -enemy.direction.y;
+            direction_changed = true;
+        }
+        if direction_changed {
+            let sound_effect = if random::<f32>() < 0.5 {
+                asset_server.load("audio/pluck_001.ogg")
+            } else {
+                asset_server.load("audio/pluck_002.ogg")
+            };
+            commands.spawn(AudioBundle {
+                source: sound_effect,
+                ..default()
+            });
         }
     }
 }
