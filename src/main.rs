@@ -19,8 +19,15 @@ fn main() {
         .run();
 }
 
+const PLAYER_SIZE: f32 = 64.0;
+const PLAYER_HALF_SIZE: f32 = PLAYER_SIZE / 2.0;
+
 #[derive(Component)]
 struct Player {}
+
+const ENEMY_SIZE: f32 = 64.0;
+const ENEMY_HALF_SIZE: f32 = ENEMY_SIZE / 2.0;
+const NUMBER_OF_ENEMIES: usize = 4;
 
 #[derive(Component)]
 struct Enemy {
@@ -34,10 +41,15 @@ fn spawn_player(
     asset_server: Res<AssetServer>,
 ) {
     let window = window_query.get_single().unwrap();
+    let position = clamp_half_sized_to_window(
+        Vec3::new(window.width() / 2.0, window.height() / 2.0, 0.0),
+        window,
+        PLAYER_HALF_SIZE,
+    );
 
     commands.spawn((
         SpriteBundle {
-            transform: Transform::from_xyz(window.width() / 2.0, window.height() / 2.0, 0.0),
+            transform: Transform::from_translation(position),
             texture: asset_server.load("sprites/ball_blue_large.png"),
             ..default()
         },
@@ -52,17 +64,22 @@ fn spawn_enemies(
 ) {
     let window = window_query.get_single().unwrap();
 
-    const NUMBER_OF_ENEMIES: usize = 4;
-
     for _ in 0..NUMBER_OF_ENEMIES {
-        let random_x = random::<f32>() * window.width();
-        let random_y = random::<f32>() * window.height();
+        let position = clamp_half_sized_to_window(
+            Vec3::new(
+                random::<f32>() * window.width(),
+                random::<f32>() * window.height(),
+                0.0,
+            ),
+            window,
+            ENEMY_HALF_SIZE,
+        );
         let enemy_direction =
             Vec2::new(random::<f32>() * 2.0 - 1.0, random::<f32>() * 2.0 - 1.0).normalize();
 
         commands.spawn((
             SpriteBundle {
-                transform: Transform::from_xyz(random_x, random_y, 0.0),
+                transform: Transform::from_translation(position),
                 texture: asset_server.load("sprites/ball_red_large.png"),
                 ..default()
             },
@@ -118,17 +135,9 @@ fn confine_player_movement(
 ) {
     let window = window_query.get_single().unwrap();
 
-    const PLAYER_SIZE: f32 = 64.0;
-    const HALF_PLAYER_SIZE: f32 = PLAYER_SIZE / 2.0;
-
-    let x_min = 0.0_f32 + HALF_PLAYER_SIZE;
-    let y_min = 0.0_f32 + HALF_PLAYER_SIZE;
-    let x_max = window.width() - HALF_PLAYER_SIZE;
-    let y_max = window.height() - HALF_PLAYER_SIZE;
-
     if let Ok(mut player_transform) = player_query.get_single_mut() {
-        player_transform.translation.x = player_transform.translation.x.clamp(x_min, x_max);
-        player_transform.translation.y = player_transform.translation.y.clamp(y_min, y_max);
+        player_transform.translation =
+            clamp_half_sized_to_window(player_transform.translation, &window, PLAYER_HALF_SIZE);
     }
 }
 
@@ -149,26 +158,15 @@ fn bounce_enemies_off_edges(
 ) {
     let window = window_query.get_single().unwrap();
 
-    const ENEMY_SIZE: f32 = 64.0;
-    const HALF_ENEMY_SIZE: f32 = ENEMY_SIZE / 2.0;
-
-    let x_min = 0.0_f32 + HALF_ENEMY_SIZE;
-    let y_min = 0.0_f32 + HALF_ENEMY_SIZE;
-    let x_max = window.width() - HALF_ENEMY_SIZE;
-    let y_max = window.height() - HALF_ENEMY_SIZE;
-
     for (enemy_transform, mut enemy) in enemy_query.iter_mut() {
-        let mut direction_changed = false;
+        if let Some(new_direction) = calculate_new_direction(
+            enemy.direction,
+            enemy_transform.translation,
+            window,
+            ENEMY_HALF_SIZE,
+        ) {
+            enemy.direction = new_direction;
 
-        if enemy_transform.translation.x <= x_min || enemy_transform.translation.x >= x_max {
-            enemy.direction.x = -enemy.direction.x;
-            direction_changed = true;
-        }
-        if enemy_transform.translation.y <= y_min || enemy_transform.translation.y >= y_max {
-            enemy.direction.y = -enemy.direction.y;
-            direction_changed = true;
-        }
-        if direction_changed {
             let sound_effect = if random::<f32>() < 0.5 {
                 asset_server.load("audio/pluck_001.ogg")
             } else {
@@ -182,22 +180,63 @@ fn bounce_enemies_off_edges(
     }
 }
 
+fn clamp_half_sized_to_window(translation: Vec3, window: &Window, half_size: f32) -> Vec3 {
+    let (x_min, y_min, x_max, y_max) = calculate_play_area_limits(half_size, window);
+
+    Vec3::new(
+        translation.x.clamp(x_min, x_max),
+        translation.y.clamp(y_min, y_max),
+        translation.z,
+    )
+}
+
+fn calculate_play_area_limits(half_size: f32, window: &Window) -> (f32, f32, f32, f32) {
+    let x_min = 0.0_f32 + half_size;
+    let y_min = 0.0_f32 + half_size;
+    let x_max = window.width() - half_size;
+    let y_max = window.height() - half_size;
+    (x_min, y_min, x_max, y_max)
+}
+
+fn calculate_new_direction(
+    direction: Vec2,
+    translation: Vec3,
+    window: &Window,
+    half_size: f32,
+) -> Option<Vec2> {
+    let (x_min, y_min, x_max, y_max) = calculate_play_area_limits(half_size, window);
+
+    let mut new_direction = None;
+
+    if translation.x <= x_min {
+        new_direction = Some(Vec2::new(direction.x.abs(), direction.y));
+    } else if translation.x >= x_max {
+        new_direction = Some(Vec2::new(-direction.x.abs(), direction.y));
+    }
+
+    if translation.y <= y_min {
+        new_direction = Some(new_direction.map_or_else(
+            || Vec2::new(direction.x, direction.y.abs()),
+            |d| Vec2::new(d.x, direction.y.abs()),
+        ));
+    } else if translation.y >= y_max {
+        new_direction = Some(new_direction.map_or_else(
+            || Vec2::new(direction.x, -direction.y.abs()),
+            |d| Vec2::new(d.x, -direction.y.abs()),
+        ));
+    }
+
+    new_direction
+}
+
 fn confine_enemy_movement(
     mut enemy_query: Query<&mut Transform, With<Enemy>>,
     window_query: Query<&Window, With<PrimaryWindow>>,
 ) {
     let window = window_query.get_single().unwrap();
 
-    const ENEMY_SIZE: f32 = 64.0;
-    const HALF_ENEMY_SIZE: f32 = ENEMY_SIZE / 2.0;
-
-    let x_min = 0.0_f32 + HALF_ENEMY_SIZE;
-    let y_min = 0.0_f32 + HALF_ENEMY_SIZE;
-    let x_max = window.width() - HALF_ENEMY_SIZE;
-    let y_max = window.height() - HALF_ENEMY_SIZE;
-
     for mut enemy_transform in enemy_query.iter_mut() {
-        enemy_transform.translation.x = enemy_transform.translation.x.clamp(x_min, x_max);
-        enemy_transform.translation.y = enemy_transform.translation.y.clamp(y_min, y_max);
+        enemy_transform.translation =
+            clamp_half_sized_to_window(enemy_transform.translation, &window, ENEMY_HALF_SIZE);
     }
 }
