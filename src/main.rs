@@ -10,7 +10,10 @@ fn main() {
             Startup,
             (spawn_camera, spawn_player, spawn_enemies, spawn_stars),
         )
-        .add_systems(Update, (player_movement, confine_player_movement))
+        .add_systems(
+            Update,
+            (player_movement, confine_player_movement, player_hit_star),
+        )
         .add_systems(
             Update,
             (
@@ -281,16 +284,19 @@ fn confine_enemy_movement(
 
 fn enemy_hit_player(
     mut commands: Commands,
-    mut player_query: Query<(Entity, &Transform), With<Player>>,
+    player_query: Query<(Entity, &Transform), With<Player>>,
     enemy_query: Query<&Transform, With<Enemy>>,
     asset_server: Res<AssetServer>,
 ) {
-    if let Ok((player_entity, player_transform)) = player_query.get_single_mut() {
+    if let Ok((player_entity, player_transform)) = player_query.get_single() {
         for enemy_transform in enemy_query.iter() {
-            let distance = player_transform
-                .translation
-                .distance(enemy_transform.translation);
-            if distance < PLAYER_HALF_SIZE + ENEMY_HALF_SIZE {
+            let colided = circular_collision(
+                player_transform,
+                PLAYER_HALF_SIZE,
+                enemy_transform,
+                ENEMY_HALF_SIZE,
+            );
+            if colided {
                 println!("Player Hit! GAME OVER!");
 
                 commands.entity(player_entity).despawn();
@@ -320,4 +326,41 @@ fn enemy_hit_player(
             // }
         }
     }
+}
+
+fn player_hit_star(
+    mut commands: Commands,
+    player_query: Query<&Transform, With<Player>>,
+    star_query: Query<(Entity, &Transform), With<Star>>,
+    asset_server: Res<AssetServer>,
+) {
+    if let Ok(player_transform) = player_query.get_single() {
+        for (star_entity, star_transform) in star_query.iter() {
+            let colided =
+                circular_collision(player_transform, PLAYER_HALF_SIZE, star_transform, STAR_HALF_SIZE);
+            if colided {
+                println!("Player Hit Star! Score +1!");
+                commands.entity(star_entity).despawn();
+                let sound_effect = asset_server.load("audio/laserLarge_000.ogg");
+                commands.spawn(AudioBundle {
+                    source: sound_effect,
+                    settings: PlaybackSettings::DESPAWN,
+                    ..default()
+                });
+            }
+        }
+    }
+}
+
+fn circular_collision(
+    first_transform: &Transform,
+    first_half_size: f32,
+    second_transform: &Transform,
+    second_half_size: f32,
+) -> bool {
+    let distance = first_transform
+        .translation
+        .distance(second_transform.translation);
+    let colided = distance < first_half_size + second_half_size;
+    colided
 }
