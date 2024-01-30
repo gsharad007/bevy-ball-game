@@ -14,6 +14,7 @@ fn main() {
                 enemy_movement,
                 bounce_enemies_off_edges,
                 confine_enemy_movement,
+                enemy_hit_player,
             ),
         )
         .run();
@@ -238,5 +239,48 @@ fn confine_enemy_movement(
     for mut enemy_transform in enemy_query.iter_mut() {
         enemy_transform.translation =
             clamp_half_sized_to_window(enemy_transform.translation, &window, ENEMY_HALF_SIZE);
+    }
+}
+
+fn enemy_hit_player(
+    mut commands: Commands,
+    mut player_query: Query<(Entity, &Transform), With<Player>>,
+    enemy_query: Query<&Transform, With<Enemy>>,
+    asset_server: Res<AssetServer>,
+) {
+    if let Ok((player_entity, player_transform)) = player_query.get_single_mut() {
+        for enemy_transform in enemy_query.iter() {
+            let distance = player_transform
+                .translation
+                .distance(enemy_transform.translation);
+            if distance < PLAYER_HALF_SIZE + ENEMY_HALF_SIZE {
+                println!("Player Hit! GAME OVER!");
+
+                commands.entity(player_entity).despawn();
+
+                let sound_effect = asset_server.load("audio/explosionCrunch_000.ogg");
+                commands.spawn(AudioBundle {
+                    source: sound_effect,
+                    settings: PlaybackSettings::DESPAWN,
+                    ..default()
+                });
+            }
+
+            // if collide(
+            //     player_transform.translation,
+            //     Vec2::new(PLAYER_SIZE, PLAYER_SIZE),
+            //     enemy_transform.translation,
+            //     Vec2::new(ENEMY_SIZE, ENEMY_SIZE),
+            // )
+            // .is_some()
+            // {
+            //     commands.entity(player_entity).despawn();
+            //     let sound_effect = asset_server.load("audio/explosionCrunch_000.ogg");
+            //     commands.spawn(AudioBundle {
+            //         source: sound_effect,
+            //         ..default()
+            //     });
+            // }
+        }
     }
 }
