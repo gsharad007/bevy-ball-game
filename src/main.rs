@@ -6,7 +6,10 @@ use rand::random;
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
-        .add_systems(Startup, (spawn_camera, spawn_player, spawn_enemies))
+        .add_systems(
+            Startup,
+            (spawn_camera, spawn_player, spawn_enemies, spawn_stars),
+        )
         .add_systems(Update, (player_movement, confine_player_movement))
         .add_systems(
             Update,
@@ -34,6 +37,13 @@ const NUMBER_OF_ENEMIES: usize = 4;
 struct Enemy {
     pub direction: Vec2,
 }
+
+const STAR_SIZE: f32 = 30.0;
+const STAR_HALF_SIZE: f32 = STAR_SIZE / 2.0;
+const NUMBER_OF_STARS: usize = 10;
+
+#[derive(Component)]
+struct Star {}
 
 /// Spawns a player entity with a blue ball sprite in the center of the primary window.
 fn spawn_player(
@@ -87,6 +97,33 @@ fn spawn_enemies(
             Enemy {
                 direction: enemy_direction,
             },
+        ));
+    }
+}
+
+fn spawn_stars(
+    mut commands: Commands,
+    window_query: Query<&Window, With<PrimaryWindow>>,
+    asset_server: Res<AssetServer>,
+) {
+    let window = window_query.get_single().unwrap();
+    for _ in 0..NUMBER_OF_STARS {
+        let position = clamp_half_sized_to_window(
+            Vec3::new(
+                random::<f32>() * window.width(),
+                random::<f32>() * window.height(),
+                0.0,
+            ),
+            window,
+            STAR_HALF_SIZE,
+        );
+        commands.spawn((
+            SpriteBundle {
+                transform: Transform::from_translation(position),
+                texture: asset_server.load("sprites/star.png"),
+                ..default()
+            },
+            Star {},
         ));
     }
 }
