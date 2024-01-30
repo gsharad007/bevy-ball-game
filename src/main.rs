@@ -6,13 +6,19 @@ use rand::random;
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
+        .init_resource::<Score>()
         .add_systems(
             Startup,
             (spawn_camera, spawn_player, spawn_enemies, spawn_stars),
         )
         .add_systems(
             Update,
-            (player_movement, confine_player_movement, player_hit_star),
+            (
+                player_movement,
+                confine_player_movement,
+                player_hit_star,
+                update_score,
+            ),
         )
         .add_systems(
             Update,
@@ -47,6 +53,17 @@ const NUMBER_OF_STARS: usize = 10;
 
 #[derive(Component)]
 struct Star {}
+
+#[derive(Resource)]
+struct Score {
+    pub value: u32,
+}
+
+impl Default for Score {
+    fn default() -> Self {
+        Score { value: 0 }
+    }
+}
 
 /// Spawns a player entity with a blue ball sprite in the center of the primary window.
 fn spawn_player(
@@ -333,13 +350,19 @@ fn player_hit_star(
     player_query: Query<&Transform, With<Player>>,
     star_query: Query<(Entity, &Transform), With<Star>>,
     asset_server: Res<AssetServer>,
+    mut score: ResMut<Score>,
 ) {
     if let Ok(player_transform) = player_query.get_single() {
         for (star_entity, star_transform) in star_query.iter() {
-            let colided =
-                circular_collision(player_transform, PLAYER_HALF_SIZE, star_transform, STAR_HALF_SIZE);
+            let colided = circular_collision(
+                player_transform,
+                PLAYER_HALF_SIZE,
+                star_transform,
+                STAR_HALF_SIZE,
+            );
             if colided {
                 println!("Player Hit Star! Score +1!");
+                score.value += 1;
                 commands.entity(star_entity).despawn();
                 let sound_effect = asset_server.load("audio/laserLarge_000.ogg");
                 commands.spawn(AudioBundle {
@@ -363,4 +386,10 @@ fn circular_collision(
         .distance(second_transform.translation);
     let colided = distance < first_half_size + second_half_size;
     colided
+}
+
+fn update_score(score: Res<Score>) {
+    if score.is_changed() {
+        println!("Score: {}", score.value);
+    }
 }
