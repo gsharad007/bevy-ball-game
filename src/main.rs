@@ -10,6 +10,7 @@ fn main() {
         .init_resource::<Score>()
         .init_resource::<EnemySpawnTimer>()
         .init_resource::<StarSpawnTimer>()
+        .add_event::<GameOver>()
         .add_systems(
             Startup,
             (spawn_camera, spawn_player, spawn_enemies, spawn_stars),
@@ -34,7 +35,7 @@ fn main() {
             ),
         )
         .add_systems(Update, (tick_timers, spawn_stars_over_time))
-        .add_systems(Update, exit_game)
+        .add_systems(Update, (exit_game, handle_game_over))
         .run();
 }
 
@@ -97,6 +98,11 @@ impl Default for StarSpawnTimer {
             timer: Timer::from_seconds(STAR_SPAWN_TIME, TimerMode::Repeating),
         }
     }
+}
+
+#[derive(Event)]
+struct GameOver {
+    pub score: u32,
 }
 
 /// Spawns a player entity with a blue ball sprite in the center of the primary window.
@@ -401,9 +407,11 @@ fn confine_enemy_movement(
 
 fn enemy_hit_player(
     mut commands: Commands,
+    mut game_over_event_writer: EventWriter<GameOver>,
     player_query: Query<(Entity, &Transform), With<Player>>,
     enemy_query: Query<&Transform, With<Enemy>>,
     asset_server: Res<AssetServer>,
+    score: Res<Score>,
 ) {
     if let Ok((player_entity, player_transform)) = player_query.get_single() {
         for enemy_transform in enemy_query.iter() {
@@ -424,6 +432,7 @@ fn enemy_hit_player(
                     settings: PlaybackSettings::DESPAWN,
                     ..default()
                 });
+                game_over_event_writer.send(GameOver { score: score.value });
             }
         }
     }
@@ -475,6 +484,12 @@ fn circular_collision(
 fn update_score(score: Res<Score>) {
     if score.is_changed() {
         println!("Score: {}", score.value);
+    }
+}
+
+fn handle_game_over(mut game_over_event_writer: EventReader<GameOver>) {
+    for game_over in game_over_event_writer.read() {
+        println!("Game Over! Score: {}", game_over.score);
     }
 }
 
