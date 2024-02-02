@@ -1,3 +1,4 @@
+use bevy::app::AppExit;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use rand::random;
@@ -33,6 +34,7 @@ fn main() {
             ),
         )
         .add_systems(Update, (tick_timers, spawn_stars_over_time))
+        .add_systems(Update, exit_game)
         .run();
 }
 
@@ -473,5 +475,11 @@ fn circular_collision(
 fn update_score(score: Res<Score>) {
     if score.is_changed() {
         println!("Score: {}", score.value);
+    }
+}
+
+fn exit_game(keyboard_input: Res<Input<KeyCode>>, mut app_exit_event_writer: EventWriter<AppExit>) {
+    if keyboard_input.just_pressed(KeyCode::Escape) {
+        app_exit_event_writer.send(AppExit);
     }
 }
