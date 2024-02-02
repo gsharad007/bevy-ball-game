@@ -7,6 +7,7 @@ fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .init_resource::<Score>()
+        .init_resource::<EnemySpawnTimer>()
         .init_resource::<StarSpawnTimer>()
         .add_systems(
             Startup,
@@ -28,9 +29,10 @@ fn main() {
                 bounce_enemies_off_edges,
                 confine_enemy_movement,
                 enemy_hit_player,
+                spawn_enemies_over_time,
             ),
         )
-        .add_systems(Update, (tick_star_spawn_timer, spawn_stars_over_time))
+        .add_systems(Update, (tick_timers, spawn_stars_over_time))
         .run();
 }
 
@@ -43,6 +45,7 @@ struct Player {}
 const ENEMY_SIZE: f32 = 64.0;
 const ENEMY_HALF_SIZE: f32 = ENEMY_SIZE / 2.0;
 const NUMBER_OF_ENEMIES: usize = 4;
+const ENEMY_SPAWN_TIME: f32 = 5.0;
 
 #[derive(Component)]
 struct Enemy {
@@ -69,6 +72,19 @@ impl Default for Score {
 }
 
 #[derive(Resource)]
+struct EnemySpawnTimer {
+    pub timer: Timer,
+}
+
+impl Default for EnemySpawnTimer {
+    fn default() -> Self {
+        EnemySpawnTimer {
+            timer: Timer::from_seconds(ENEMY_SPAWN_TIME, TimerMode::Repeating),
+        }
+    }
+}
+
+#[derive(Resource)]
 struct StarSpawnTimer {
     pub timer: Timer,
 }
@@ -88,20 +104,27 @@ fn spawn_player(
     asset_server: Res<AssetServer>,
 ) {
     let window = window_query.get_single().unwrap();
-    let position = clamp_half_sized_to_window(
+    let position = get_player_position_clamped(window);
+    commands.spawn(get_player_bundle(position, asset_server));
+}
+
+fn get_player_position_clamped(window: &Window) -> Vec3 {
+    clamp_half_sized_to_window(
         Vec3::new(window.width() / 2.0, window.height() / 2.0, 0.0),
         window,
         PLAYER_HALF_SIZE,
-    );
+    )
+}
 
-    commands.spawn((
+fn get_player_bundle(position: Vec3, asset_server: Res<AssetServer>) -> (SpriteBundle, Player) {
+    (
         SpriteBundle {
             transform: Transform::from_translation(position),
             texture: asset_server.load("sprites/ball_blue_large.png"),
             ..default()
         },
         Player {},
-    ));
+    )
 }
 
 fn spawn_enemies(
@@ -112,29 +135,58 @@ fn spawn_enemies(
     let window = window_query.get_single().unwrap();
 
     for _ in 0..NUMBER_OF_ENEMIES {
-        let position = clamp_half_sized_to_window(
-            Vec3::new(
-                random::<f32>() * window.width(),
-                random::<f32>() * window.height(),
-                0.0,
-            ),
-            window,
-            ENEMY_HALF_SIZE,
-        );
-        let enemy_direction =
-            Vec2::new(random::<f32>() * 2.0 - 1.0, random::<f32>() * 2.0 - 1.0).normalize();
-
-        commands.spawn((
-            SpriteBundle {
-                transform: Transform::from_translation(position),
-                texture: asset_server.load("sprites/ball_red_large.png"),
-                ..default()
-            },
-            Enemy {
-                direction: enemy_direction,
-            },
-        ));
+        let position = get_enemy_position_clamped(window);
+        let direction = get_enemy_direction();
+        commands.spawn(get_enemy_bundle(position, &asset_server, direction));
     }
+}
+
+fn spawn_enemies_over_time(
+    mut commands: Commands,
+    window_query: Query<&Window, With<PrimaryWindow>>,
+    asset_server: Res<AssetServer>,
+    enemy_spawn_timer: Res<EnemySpawnTimer>,
+) {
+    if enemy_spawn_timer.timer.finished() {
+        let window = window_query.get_single().unwrap();
+
+        let position = get_enemy_position_clamped(window);
+        let direction = get_enemy_direction();
+        commands.spawn(get_enemy_bundle(position, &asset_server, direction));
+    }
+}
+
+fn get_enemy_position_clamped(window: &Window) -> Vec3 {
+    clamp_half_sized_to_window(
+        Vec3::new(
+            random::<f32>() * window.width(),
+            random::<f32>() * window.height(),
+            0.0,
+        ),
+        window,
+        ENEMY_HALF_SIZE,
+    )
+}
+
+fn get_enemy_direction() -> Vec2 {
+    Vec2::new(random::<f32>() * 2.0 - 1.0, random::<f32>() * 2.0 - 1.0).normalize()
+}
+
+fn get_enemy_bundle(
+    position: Vec3,
+    asset_server: &Res<AssetServer>,
+    enemy_direction: Vec2,
+) -> (SpriteBundle, Enemy) {
+    (
+        SpriteBundle {
+            transform: Transform::from_translation(position),
+            texture: asset_server.load("sprites/ball_red_large.png"),
+            ..default()
+        },
+        Enemy {
+            direction: enemy_direction,
+        },
+    )
 }
 
 fn spawn_stars(
@@ -144,24 +196,54 @@ fn spawn_stars(
 ) {
     let window = window_query.get_single().unwrap();
     for _ in 0..NUMBER_OF_STARS {
-        let position = clamp_half_sized_to_window(
-            Vec3::new(
-                random::<f32>() * window.width(),
-                random::<f32>() * window.height(),
-                0.0,
-            ),
-            window,
-            STAR_HALF_SIZE,
-        );
-        commands.spawn((
-            SpriteBundle {
-                transform: Transform::from_translation(position),
-                texture: asset_server.load("sprites/star.png"),
-                ..default()
-            },
-            Star {},
-        ));
+        let position = get_star_position_clamped(window);
+        commands.spawn(get_star_bundle(position, &asset_server));
     }
+}
+
+fn tick_timers(
+    mut enemy_spawn_timer: ResMut<EnemySpawnTimer>,
+    mut star_spawn_timer: ResMut<StarSpawnTimer>,
+    time: Res<Time>,
+) {
+    enemy_spawn_timer.timer.tick(time.delta());
+    star_spawn_timer.timer.tick(time.delta());
+}
+
+fn spawn_stars_over_time(
+    mut commands: Commands,
+    window_query: Query<&Window, With<PrimaryWindow>>,
+    asset_server: Res<AssetServer>,
+    star_spawn_timer: Res<StarSpawnTimer>,
+) {
+    if star_spawn_timer.timer.finished() {
+        let window = window_query.get_single().unwrap();
+        let position = get_star_position_clamped(window);
+        commands.spawn(get_star_bundle(position, &asset_server));
+    }
+}
+
+fn get_star_bundle(position: Vec3, asset_server: &Res<'_, AssetServer>) -> (SpriteBundle, Star) {
+    (
+        SpriteBundle {
+            transform: Transform::from_translation(position),
+            texture: asset_server.load("sprites/star.png"),
+            ..default()
+        },
+        Star {},
+    )
+}
+
+fn get_star_position_clamped(window: &Window) -> Vec3 {
+    clamp_half_sized_to_window(
+        Vec3::new(
+            random::<f32>() * window.width(),
+            random::<f32>() * window.height(),
+            0.0,
+        ),
+        window,
+        STAR_HALF_SIZE,
+    )
 }
 
 /// Spawns a 2D camera in the center of the primary window.
@@ -341,22 +423,6 @@ fn enemy_hit_player(
                     ..default()
                 });
             }
-
-            // if collide(
-            //     player_transform.translation,
-            //     Vec2::new(PLAYER_SIZE, PLAYER_SIZE),
-            //     enemy_transform.translation,
-            //     Vec2::new(ENEMY_SIZE, ENEMY_SIZE),
-            // )
-            // .is_some()
-            // {
-            //     commands.entity(player_entity).despawn();
-            //     let sound_effect = asset_server.load("audio/explosionCrunch_000.ogg");
-            //     commands.spawn(AudioBundle {
-            //         source: sound_effect,
-            //         ..default()
-            //     });
-            // }
         }
     }
 }
@@ -407,38 +473,5 @@ fn circular_collision(
 fn update_score(score: Res<Score>) {
     if score.is_changed() {
         println!("Score: {}", score.value);
-    }
-}
-
-fn tick_star_spawn_timer(mut star_spawn_timer: ResMut<StarSpawnTimer>, time: Res<Time>) {
-    star_spawn_timer.timer.tick(time.delta());
-}
-
-fn spawn_stars_over_time(
-    mut commands: Commands,
-    window_query: Query<&Window, With<PrimaryWindow>>,
-    asset_server: Res<AssetServer>,
-    star_spawn_timer: Res<StarSpawnTimer>,
-) {
-    if star_spawn_timer.timer.finished() {
-        let window = window_query.get_single().unwrap();
-        let position = clamp_half_sized_to_window(
-            Vec3::new(
-                random::<f32>() * window.width(),
-                random::<f32>() * window.height(),
-                0.0,
-            ),
-            window,
-            STAR_HALF_SIZE,
-        );
-
-        commands.spawn((
-            SpriteBundle {
-                transform: Transform::from_translation(position),
-                texture: asset_server.load("sprites/star.png"),
-                ..default()
-            },
-            Star {},
-        ));
     }
 }
