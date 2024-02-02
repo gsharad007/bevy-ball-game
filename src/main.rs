@@ -8,6 +8,7 @@ fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .init_resource::<Score>()
+        .init_resource::<HighScore>()
         .init_resource::<EnemySpawnTimer>()
         .init_resource::<StarSpawnTimer>()
         .add_event::<GameOver>()
@@ -35,7 +36,15 @@ fn main() {
             ),
         )
         .add_systems(Update, (tick_timers, spawn_stars_over_time))
-        .add_systems(Update, (exit_game, handle_game_over))
+        .add_systems(
+            Update,
+            (
+                exit_game,
+                handle_game_over,
+                update_high_scores,
+                high_scores_updated,
+            ),
+        )
         .run();
 }
 
@@ -70,7 +79,18 @@ struct Score {
 
 impl Default for Score {
     fn default() -> Self {
-        Score { value: 0 }
+        Self { value: 0 }
+    }
+}
+
+#[derive(Resource, Debug)]
+struct HighScore {
+    pub scores: Vec<(String, u32)>,
+}
+
+impl Default for HighScore {
+    fn default() -> Self {
+        Self { scores: Vec::new() }
     }
 }
 
@@ -81,7 +101,7 @@ struct EnemySpawnTimer {
 
 impl Default for EnemySpawnTimer {
     fn default() -> Self {
-        EnemySpawnTimer {
+        Self {
             timer: Timer::from_seconds(ENEMY_SPAWN_TIME, TimerMode::Repeating),
         }
     }
@@ -94,7 +114,7 @@ struct StarSpawnTimer {
 
 impl Default for StarSpawnTimer {
     fn default() -> Self {
-        StarSpawnTimer {
+        Self {
             timer: Timer::from_seconds(STAR_SPAWN_TIME, TimerMode::Repeating),
         }
     }
@@ -487,8 +507,8 @@ fn update_score(score: Res<Score>) {
     }
 }
 
-fn handle_game_over(mut game_over_event_writer: EventReader<GameOver>) {
-    for game_over in game_over_event_writer.read() {
+fn handle_game_over(mut game_over_event_reader: EventReader<GameOver>) {
+    for game_over in game_over_event_reader.read() {
         println!("Game Over! Score: {}", game_over.score);
     }
 }
@@ -496,5 +516,22 @@ fn handle_game_over(mut game_over_event_writer: EventReader<GameOver>) {
 fn exit_game(keyboard_input: Res<Input<KeyCode>>, mut app_exit_event_writer: EventWriter<AppExit>) {
     if keyboard_input.just_pressed(KeyCode::Escape) {
         app_exit_event_writer.send(AppExit);
+    }
+}
+
+fn update_high_scores(
+    mut game_over_event_reader: EventReader<GameOver>,
+    mut high_score: ResMut<HighScore>,
+) {
+    for game_over in game_over_event_reader.read() {
+        high_score
+            .scores
+            .push(("Player".to_string(), game_over.score));
+    }
+}
+
+fn high_scores_updated(high_scores: Res<HighScore>) {
+    if high_scores.is_changed() {
+        println!("High Scores: {:?}", high_scores.scores);
     }
 }
