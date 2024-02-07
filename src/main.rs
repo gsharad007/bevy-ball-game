@@ -7,35 +7,57 @@ use rand::random;
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
+        .add_state::<AppState>()
+        .add_state::<SimulationState>()
         .init_resource::<Score>()
         .init_resource::<HighScore>()
         .init_resource::<EnemySpawnTimer>()
         .init_resource::<StarSpawnTimer>()
         .add_event::<GameOver>()
+        .add_systems(Update, transition_to_game_state)
+        .add_systems(Update, toggle_simulation.run_if(in_state(AppState::Game)))
+        .add_systems(Startup, spawn_camera)
+        // .add_system_set(
+        //     SystemSet::on_enter(AppState::Game),
+        //     (spawn_player, spawn_enemies, spawn_stars),
+        // )
         .add_systems(
-            Startup,
-            (spawn_camera, spawn_player, spawn_enemies, spawn_stars),
+            OnEnter(AppState::Game),
+            (spawn_player, spawn_enemies, spawn_stars),
+        )
+        .add_systems(
+            OnExit(AppState::Game),
+            (despawn_player, despawn_enemies, despawn_stars),
         )
         .add_systems(
             Update,
             (
                 player_movement,
-                confine_player_movement,
+                confine_player_movement.after(player_movement),
                 player_hit_star,
                 update_score,
-            ),
+            )
+                .run_if(in_state(AppState::Game))
+                .run_if(in_state(SimulationState::Running)),
         )
         .add_systems(
             Update,
             (
                 enemy_movement,
                 bounce_enemies_off_edges,
-                confine_enemy_movement,
+                confine_enemy_movement.after(enemy_movement),
                 enemy_hit_player,
                 spawn_enemies_over_time,
-            ),
+            )
+                .run_if(in_state(AppState::Game))
+                .run_if(in_state(SimulationState::Running)),
         )
-        .add_systems(Update, (tick_timers, spawn_stars_over_time))
+        .add_systems(
+            Update,
+            (tick_timers, spawn_stars_over_time)
+                .run_if(in_state(AppState::Game))
+                .run_if(in_state(SimulationState::Running)),
+        )
         .add_systems(
             Update,
             (
@@ -46,6 +68,55 @@ fn main() {
             ),
         )
         .run();
+}
+
+#[derive(States, Debug, Hash, PartialEq, Eq, Clone, Copy, Default)]
+enum AppState {
+    #[default]
+    MainMenu,
+    Game,
+    GameOver,
+}
+
+#[derive(States, Debug, Hash, PartialEq, Eq, Clone, Copy, Default)]
+enum SimulationState {
+    Running,
+    #[default]
+    Paused,
+}
+
+fn toggle_simulation(
+    mut next_simulation_state: ResMut<NextState<SimulationState>>,
+    keyboard_input: Res<Input<KeyCode>>,
+    simulation_state: Res<State<SimulationState>>,
+) {
+    if keyboard_input.just_pressed(KeyCode::Space) {
+        if *simulation_state == SimulationState::Running {
+            next_simulation_state.set(SimulationState::Paused);
+            println!("Simulation paused");
+        } else if *simulation_state == SimulationState::Paused {
+            next_simulation_state.set(SimulationState::Running);
+            println!("Simulation running");
+        }
+    }
+}
+
+fn transition_to_game_state(
+    mut next_app_state: ResMut<NextState<AppState>>,
+    keyboard_input: Res<Input<KeyCode>>,
+    app_state: Res<State<AppState>>,
+) {
+    if keyboard_input.just_pressed(KeyCode::G) {
+        if *app_state != AppState::Game {
+            next_app_state.set(AppState::Game);
+            println!("Game started");
+        }
+    } else if keyboard_input.just_pressed(KeyCode::M) {
+        if *app_state != AppState::MainMenu {
+            next_app_state.set(AppState::MainMenu);
+            println!("Enter main menu");
+        }
+    }
 }
 
 const PLAYER_SIZE: f32 = 64.0;
@@ -136,6 +207,13 @@ fn spawn_player(
     commands.spawn(get_player_bundle(position, asset_server));
 }
 
+/// Spawns a player entity with a blue ball sprite in the center of the primary window.
+fn despawn_player(mut commands: Commands, entity_query: Query<Entity, With<Player>>) {
+    if let Ok(entity) = entity_query.get_single() {
+        commands.entity(entity).despawn();
+    }
+}
+
 fn get_player_position_clamped(window: &Window) -> Vec3 {
     clamp_half_sized_to_window(
         Vec3::new(window.width() / 2.0, window.height() / 2.0, 0.0),
@@ -166,6 +244,12 @@ fn spawn_enemies(
         let position = get_enemy_position_clamped(window);
         let direction = get_enemy_direction();
         commands.spawn(get_enemy_bundle(position, &asset_server, direction));
+    }
+}
+
+fn despawn_enemies(mut commands: Commands, entity_query: Query<Entity, With<Enemy>>) {
+    for entity in entity_query.iter() {
+        commands.entity(entity).despawn();
     }
 }
 
@@ -226,6 +310,12 @@ fn spawn_stars(
     for _ in 0..NUMBER_OF_STARS {
         let position = get_star_position_clamped(window);
         commands.spawn(get_star_bundle(position, &asset_server));
+    }
+}
+
+fn despawn_stars(mut commands: Commands, entity_query: Query<Entity, With<Star>>) {
+    for entity in entity_query.iter() {
+        commands.entity(entity).despawn();
     }
 }
 
